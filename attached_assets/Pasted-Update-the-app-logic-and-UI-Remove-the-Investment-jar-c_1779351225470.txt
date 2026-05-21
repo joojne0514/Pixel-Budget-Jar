@@ -1,0 +1,96 @@
+Update the app logic and UI.
+
+Remove the Investment jar completely.
+
+Use cute pixel-art jar visuals instead of normal cards. Each budget category should look like an actual glass jar with coins/liquid filling up or going down. Use pastel pixel-art style.
+
+Income should also be shown as jars:
+- Salary Income Jar
+- Content Creator Income Jar
+- Gift / Support Income Jar
+
+When income is added or updated, show a cute deposit animation:
+coins falling into the income jar, sparkle effect, and a small “+amount” floating label.
+
+Budget jars:
+- Food
+- Transport
+- Daily Items
+- Debt Repayment
+- Savings
+- Emotional Value
+
+Locked jars:
+- Debt Repayment
+- Savings
+
+Remove Investment and split its previous 15% allocation equally into Debt Repayment and Savings.
+
+Budget formula:
+Total Income = Salary + Content Creator Income + Gift / Support Income
+Fixed Expenses = Rent + Utilities
+Base Balance = Total Income - Fixed Expenses
+
+Food gets a minimum monthly budget of 600 first.
+Remaining Balance = Base Balance - 600
+
+Allocate Remaining Balance:
+- Transport: 5%
+- Daily Items: 5%
+- Debt Repayment: 29.5%
+- Savings: 29.5%
+- Emotional Value: 16%
+- Extra Food Buffer: 20%
+
+Food total budget = 600 + Extra Food Buffer.
+
+Rules:
+1. Debt Repayment and Savings are locked jars.
+2. Money can be added into Debt Repayment and Savings.
+3. Money cannot be withdrawn from Debt Repayment or Savings.
+4. Exception: Debt Repayment and Savings can transfer money between each other.
+5. Other unlocked jars can transfer money between each other freely.
+6. If an unlocked spending jar overspends, the app should automatically cover the overspending by pulling money from other unlocked jars.
+7. Do not pull money from Debt Repayment or Savings to cover spending overspend.
+8. Show clearly which jar money was pulled from.
+
+Overspending example:
+If Food has 50 remaining but user records 80 Food expense, Food is short by 30.
+The app should deduct 30 from other unlocked jars, such as Emotional Value, Transport, or Daily Items.
+Show this as “30 borrowed from Emotional Value”.
+
+Add a transfer feature:
+- User can transfer money between unlocked jars.
+- User can transfer money from unlocked jars into locked jars.
+- User cannot transfer money out of locked jars.
+- Exception: Savings and Debt Repayment can transfer between each other.
+
+Month-end rollover:
+Add a “Close Month & Roll Over” button.
+
+When clicked:
+1. Calculate leftover money in each unlocked jar.
+2. Let the user choose what to do with leftover money:
+   - Roll over to the same jar next month
+   - Move to Debt Repayment jar
+   - Move to Savings jar
+3. Locked jar balances should stay locked.
+4. Next month should include rollover amounts.
+5. Save all data in localStorage.
+
+UI requirements:
+- No normal rectangular cards for budget categories.
+- Use jar-shaped components.
+- Cute pixel-art aesthetic.
+- Pastel pink, cream, lavender, mint colors.
+- iPad-friendly layout.
+- Add small lock icons on Debt Repayment and Savings jars.
+- Add cute empty/full states for jars.
+- Add simple animations for deposits, expenses, transfers, and rollover.
+
+Keep it React + Vite.
+Keep all data in localStorage.
+No backend.
+No login.
+No paid API.
+Make the code clean and easy to edit.

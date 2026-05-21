@@ -243,16 +243,14 @@
 .bg-pastel-food { background-color: hsl(10 60% 85%); }
 .bg-pastel-transport { background-color: hsl(200 50% 85%); }
 .bg-pastel-daily { background-color: hsl(40 60% 85%); }
-.bg-pastel-debt { background-color: hsl(0 0% 85%); }
-.bg-pastel-investment { background-color: hsl(150 40% 85%); }
+.bg-pastel-debt { background-color: hsl(240 30% 88%); }
 .bg-pastel-savings { background-color: hsl(280 40% 88%); }
 .bg-pastel-emotional { background-color: hsl(330 50% 85%); }
 
 .text-pastel-food { color: hsl(10 60% 35%); }
 .text-pastel-transport { color: hsl(200 50% 35%); }
 .text-pastel-daily { color: hsl(40 60% 35%); }
-.text-pastel-debt { color: hsl(0 0% 35%); }
-.text-pastel-investment { color: hsl(150 40% 35%); }
+.text-pastel-debt { color: hsl(240 30% 35%); }
 .text-pastel-savings { color: hsl(280 40% 35%); }
 .text-pastel-emotional { color: hsl(330 50% 35%); }
 

@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { useMonthData, DebtSavingsMode } from "@/hooks/useMonthData";
+import { useMonthData } from "@/hooks/useMonthData";
 import { useBudget } from "@/hooks/useBudget";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +16,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Trash2, ChevronRight, ArrowRightLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Trash2, ArrowRightLeft } from "lucide-react";
+import { IncomeJar } from "@/components/IncomeJar";
+import { RolloverModal } from "@/components/RolloverModal";
 
 type Props = {
   monthKey: string;
@@ -25,10 +26,10 @@ type Props = {
 };
 
 export default function IncomeFixedView({ monthKey, onMonthChange }: Props) {
-  const { data, updateIncome, updateFixedExpenses, setDebtSavingsMode, resetMonth, closeMonthAndRollover } =
+  const { data, updateIncome, updateFixedExpenses, resetMonth, closeMonthWithChoices } =
     useMonthData(monthKey);
-  const { totalIncome, totalFixed, baseBalance, jarBudgets, jarSpent } = useBudget(monthKey);
-  const [rolloverResult, setRolloverResult] = useState<null | { nextMonthKey: string; rollovers: Partial<Record<string, number>> }>(null);
+  const { totalIncome, totalFixed, baseBalance, jarRemaining } = useBudget(monthKey);
+  const [rolloverOpen, setRolloverOpen] = useState(false);
 
   const formatter = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -37,21 +38,11 @@ export default function IncomeFixedView({ monthKey, onMonthChange }: Props) {
     maximumFractionDigits: 0,
   });
 
-  const handleCloseMonth = () => {
-    const result = closeMonthAndRollover(jarBudgets, jarSpent);
-    setRolloverResult(result);
+  const handleRolloverConfirm = (choices: Parameters<typeof closeMonthWithChoices>[0]) => {
+    const { nextMonthKey } = closeMonthWithChoices(choices, jarRemaining);
+    setRolloverOpen(false);
+    onMonthChange(nextMonthKey);
   };
-
-  const handleNavigateToNext = () => {
-    if (rolloverResult) {
-      onMonthChange(rolloverResult.nextMonthKey);
-      setRolloverResult(null);
-    }
-  };
-
-  const rolloverEntries = rolloverResult
-    ? Object.entries(rolloverResult.rollovers).filter(([, v]) => (v ?? 0) > 0)
-    : [];
 
   return (
     <motion.div
@@ -59,31 +50,25 @@ export default function IncomeFixedView({ monthKey, onMonthChange }: Props) {
       animate={{ opacity: 1, y: 0 }}
       className="p-4 pb-24 max-w-lg mx-auto space-y-5"
     >
-      {/* Income */}
-      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm space-y-4">
-        <h2 className="font-pixel text-[10px] tracking-wide text-primary">Monthly Income</h2>
-        <div className="space-y-4">
+      {/* Income Jars */}
+      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-[2px_4px_0px_rgba(0,0,0,0.12)] space-y-4">
+        <h2 className="font-pixel text-[10px] tracking-wide text-primary">Income Jars</h2>
+        <div className="grid grid-cols-3 gap-3">
           {data.income.map((inc) => (
-            <div key={inc.id} className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">{inc.label}</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-pixel text-muted-foreground text-xs">$</span>
-                <Input
-                  type="number"
-                  value={inc.amount || ""}
-                  onChange={(e) => updateIncome(inc.id, Number(e.target.value))}
-                  className="pl-8 font-bold bg-background h-12 rounded-xl"
-                  placeholder="0"
-                  data-testid={`input-income-${inc.id}`}
-                />
-              </div>
-            </div>
+            <IncomeJar
+              key={inc.id}
+              id={inc.id}
+              label={inc.label}
+              category={inc.category}
+              amount={inc.amount}
+              onSave={updateIncome}
+            />
           ))}
         </div>
       </div>
 
       {/* Fixed Expenses */}
-      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-[2px_4px_0px_rgba(0,0,0,0.12)] space-y-4">
         <h2 className="font-pixel text-[10px] tracking-wide text-destructive">Fixed Expenses</h2>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -117,37 +102,6 @@ export default function IncomeFixedView({ monthKey, onMonthChange }: Props) {
         </div>
       </div>
 
-      {/* Debt / Savings Toggle */}
-      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm space-y-3">
-        <h2 className="font-pixel text-[10px] tracking-wide text-foreground">Debt & Savings Split</h2>
-        <p className="text-xs text-muted-foreground font-semibold">
-          How to allocate between Debt Repayment and Savings jars
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          {(
-            [
-              { value: "equal", label: "Equal Split", sub: "Debt 22% / Savings 22%" },
-              { value: "debt-higher", label: "Debt Priority", sub: "Debt 25% / Savings 19%" },
-            ] as { value: DebtSavingsMode; label: string; sub: string }[]
-          ).map((opt) => (
-            <button
-              key={opt.value}
-              data-testid={`toggle-debt-savings-${opt.value}`}
-              onClick={() => setDebtSavingsMode(opt.value)}
-              className={cn(
-                "rounded-xl border-2 p-3 text-left transition-all",
-                data.debtSavingsMode === opt.value
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-background hover:bg-muted/50"
-              )}
-            >
-              <div className="text-xs font-bold text-foreground">{opt.label}</div>
-              <div className="text-[10px] text-muted-foreground mt-0.5 font-semibold">{opt.sub}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Balance Summary */}
       <div className="bg-muted/50 border-2 border-border rounded-2xl p-5 shadow-sm">
         <div className="grid grid-cols-3 gap-2 text-center divide-x-2 divide-border">
@@ -166,74 +120,36 @@ export default function IncomeFixedView({ monthKey, onMonthChange }: Props) {
         </div>
       </div>
 
-      {/* Close Month & Roll Over */}
-      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-sm space-y-3">
-        <h2 className="font-pixel text-[10px] tracking-wide text-foreground">End of Month</h2>
-        <p className="text-xs text-muted-foreground font-semibold leading-relaxed">
-          Close this month and roll unused unlocked jar balances into next month's same categories.
-          Locked jars (Debt, Investment, Savings) do not roll over.
-        </p>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              className="w-full h-12 rounded-xl font-pixel text-[9px] bg-secondary text-secondary-foreground hover:bg-secondary/90 border-2 border-secondary"
-              data-testid="button-close-month"
-            >
-              <ArrowRightLeft className="w-4 h-4 mr-2" />
-              Close Month & Roll Over
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent className="rounded-2xl border-2">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="font-pixel text-xs">Close this month?</AlertDialogTitle>
-              <AlertDialogDescription className="font-bold text-muted-foreground text-sm leading-relaxed">
-                Unused balances from Food, Transport, Daily Items, and Emotional Value will be added to
-                next month's budget for the same jars. Locked jars stay as-is.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="rounded-xl font-bold">Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleCloseMonth}
-                className="rounded-xl font-bold"
-                data-testid="button-confirm-close-month"
-              >
-                Roll Over
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      {/* Budget breakdown note */}
+      <div className="bg-card border-2 border-border rounded-2xl p-4 shadow-sm text-center space-y-1">
+        <p className="font-pixel text-[8px] text-muted-foreground">Allocation (of remaining after food minimum)</p>
+        <div className="grid grid-cols-3 gap-1 mt-2 text-[9px] font-bold text-muted-foreground">
+          <span>Transport 5%</span>
+          <span>Daily 5%</span>
+          <span>Emotional 16%</span>
+          <span>Debt 29.5%</span>
+          <span>Savings 29.5%</span>
+          <span>Food buffer 20%</span>
+        </div>
+        <p className="text-[9px] text-primary font-bold mt-1">Food min $600 + 20% buffer</p>
       </div>
 
-      {/* Rollover success panel */}
-      {rolloverResult && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-green-50 border-2 border-green-300 rounded-2xl p-5 space-y-3"
+      {/* Close Month & Roll Over */}
+      <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-[2px_4px_0px_rgba(0,0,0,0.12)] space-y-3">
+        <h2 className="font-pixel text-[10px] tracking-wide text-foreground">End of Month</h2>
+        <p className="text-xs text-muted-foreground font-semibold leading-relaxed">
+          Choose where to send leftover money from each unlocked jar.
+          Locked jars (Debt, Savings) are not affected.
+        </p>
+        <Button
+          className="w-full h-12 rounded-xl font-pixel text-[9px] bg-secondary text-secondary-foreground hover:bg-secondary/90 border-2 border-secondary shadow-[2px_4px_0px_rgba(0,0,0,0.1)]"
+          onClick={() => setRolloverOpen(true)}
+          data-testid="button-close-month"
         >
-          <h3 className="font-pixel text-[10px] text-green-700">Rolled Over!</h3>
-          {rolloverEntries.length > 0 ? (
-            <ul className="space-y-1">
-              {rolloverEntries.map(([jar, amount]) => (
-                <li key={jar} className="flex justify-between text-sm font-bold text-green-800">
-                  <span className="capitalize">{jar}</span>
-                  <span>+{formatter.format(amount ?? 0)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-green-700 font-semibold">No unused balances to roll over.</p>
-          )}
-          <Button
-            onClick={handleNavigateToNext}
-            className="w-full h-10 rounded-xl font-bold text-xs mt-2 bg-green-600 hover:bg-green-700 text-white"
-            data-testid="button-go-to-next-month"
-          >
-            Go to Next Month <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </motion.div>
-      )}
+          <ArrowRightLeft className="w-4 h-4 mr-2" />
+          Close Month & Roll Over
+        </Button>
+      </div>
 
       {/* Reset */}
       <div className="pt-2 flex justify-center">
@@ -268,6 +184,13 @@ export default function IncomeFixedView({ monthKey, onMonthChange }: Props) {
           </AlertDialogContent>
         </AlertDialog>
       </div>
+
+      <RolloverModal
+        open={rolloverOpen}
+        onClose={() => setRolloverOpen(false)}
+        jarRemaining={jarRemaining}
+        onConfirm={handleRolloverConfirm}
+      />
     </motion.div>
   );
 }

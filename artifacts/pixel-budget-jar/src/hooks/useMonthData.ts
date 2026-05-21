@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 
-export type JarKey = "food" | "transport" | "daily" | "debt" | "investment" | "savings" | "emotional";
+export type JarKey = "food" | "transport" | "daily" | "debt" | "savings" | "emotional";
+
+export type LockedJarKey = "debt" | "savings";
+export const LOCKED_JAR_KEYS: LockedJarKey[] = ["debt", "savings"];
+export const UNLOCKED_JAR_KEYS: JarKey[] = ["food", "transport", "daily", "emotional"];
 
 export type IncomeEntry = {
   id: string;
@@ -22,14 +26,27 @@ export type Transaction = {
   note: string;
 };
 
-export type DebtSavingsMode = "equal" | "debt-higher";
+export type Transfer = {
+  id: string;
+  date: string;
+  fromJar: JarKey;
+  toJar: JarKey;
+  amount: number;
+  note: string;
+  auto: boolean;
+};
+
+export type RolloverChoice = "same" | "debt" | "savings";
 
 export type MonthData = {
   income: IncomeEntry[];
   fixedExpenses: FixedExpense;
   transactions: Transaction[];
-  debtSavingsMode: DebtSavingsMode;
+  transfers: Transfer[];
+  /** unlocked jar amounts added to budget from previous month rollover */
   rollovers: Partial<Record<JarKey, number>>;
+  /** amounts added to locked jar budgets from previous month rollover choices */
+  lockedContributions: Partial<Record<LockedJarKey, number>>;
 };
 
 export const DEFAULT_MONTH_DATA: MonthData = {
@@ -38,14 +55,16 @@ export const DEFAULT_MONTH_DATA: MonthData = {
     { id: "creator", category: "creator", amount: 0, label: "Creator Income" },
     { id: "gift", category: "gift", amount: 0, label: "Gift / Support" },
   ],
-  fixedExpenses: {
-    rent: 0,
-    utilities: 0,
-  },
+  fixedExpenses: { rent: 0, utilities: 0 },
   transactions: [],
-  debtSavingsMode: "equal",
+  transfers: [],
   rollovers: {},
+  lockedContributions: {},
 };
+
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 11);
+}
 
 function mergeWithDefaults(stored: Partial<MonthData>): MonthData {
   return {
@@ -54,8 +73,9 @@ function mergeWithDefaults(stored: Partial<MonthData>): MonthData {
     income: stored.income ?? DEFAULT_MONTH_DATA.income,
     fixedExpenses: stored.fixedExpenses ?? DEFAULT_MONTH_DATA.fixedExpenses,
     transactions: stored.transactions ?? [],
-    debtSavingsMode: stored.debtSavingsMode ?? "equal",
+    transfers: stored.transfers ?? [],
     rollovers: stored.rollovers ?? {},
+    lockedContributions: stored.lockedContributions ?? {},
   };
 }
 
@@ -72,21 +92,15 @@ export function useMonthData(monthKey: string) {
     try {
       const item = localStorage.getItem(storageKey);
       if (item) return mergeWithDefaults(JSON.parse(item));
-    } catch (e) {
-      // ignore
-    }
+    } catch (_) { /* ignore */ }
     return DEFAULT_MONTH_DATA;
   });
 
   useEffect(() => {
     try {
       const item = localStorage.getItem(storageKey);
-      if (item) {
-        setData(mergeWithDefaults(JSON.parse(item)));
-      } else {
-        setData(DEFAULT_MONTH_DATA);
-      }
-    } catch (e) {
+      setData(item ? mergeWithDefaults(JSON.parse(item)) : DEFAULT_MONTH_DATA);
+    } catch (_) {
       setData(DEFAULT_MONTH_DATA);
     }
   }, [monthKey, storageKey]);
@@ -116,20 +130,48 @@ export function useMonthData(monthKey: string) {
     [data, saveData]
   );
 
-  const setDebtSavingsMode = useCallback(
-    (mode: DebtSavingsMode) => {
-      saveData({ ...data, debtSavingsMode: mode });
+  /**
+   * Add an expense transaction. If autoTransfers are provided (for overspend coverage),
+   * they are saved together atomically.
+   */
+  const addExpense = useCallback(
+    (
+      transaction: Omit<Transaction, "id">,
+      autoTransfers: Omit<Transfer, "id">[] = []
+    ) => {
+      const newTx: Transaction = { ...transaction, id: generateId() };
+      const newTransfers: Transfer[] = autoTransfers.map((t) => ({
+        ...t,
+        id: generateId(),
+      }));
+      saveData({
+        ...data,
+        transactions: [newTx, ...data.transactions],
+        transfers: [...newTransfers, ...data.transfers],
+      });
     },
     [data, saveData]
   );
 
-  const addTransaction = useCallback(
-    (transaction: Omit<Transaction, "id">) => {
-      const newTransaction: Transaction = {
-        ...transaction,
-        id: Math.random().toString(36).substring(2, 9),
-      };
-      saveData({ ...data, transactions: [newTransaction, ...data.transactions] });
+  /**
+   * Add a manual transfer between jars.
+   * Validates transfer rules:
+   * - Locked jars cannot send OUT, except Debt↔Savings.
+   * - Unlocked can send to unlocked or to locked.
+   */
+  const addTransfer = useCallback(
+    (transfer: Omit<Transfer, "id" | "auto">) => {
+      const { fromJar, toJar } = transfer;
+      const fromLocked = LOCKED_JAR_KEYS.includes(fromJar as LockedJarKey);
+      const toLocked = LOCKED_JAR_KEYS.includes(toJar as LockedJarKey);
+
+      // Locked jars can only send to each other (Debt↔Savings)
+      if (fromLocked && !(fromLocked && toLocked)) {
+        throw new Error("Cannot transfer out of a locked jar except to another locked jar.");
+      }
+
+      const newTransfer: Transfer = { ...transfer, id: generateId(), auto: false };
+      saveData({ ...data, transfers: [newTransfer, ...data.transfers] });
     },
     [data, saveData]
   );
@@ -141,22 +183,27 @@ export function useMonthData(monthKey: string) {
     [data, saveData]
   );
 
+  const deleteTransfer = useCallback(
+    (id: string) => {
+      saveData({ ...data, transfers: data.transfers.filter((t) => t.id !== id) });
+    },
+    [data, saveData]
+  );
+
   const resetMonth = useCallback(() => {
     saveData(DEFAULT_MONTH_DATA);
   }, [saveData]);
 
-  const closeMonthAndRollover = useCallback(
-    (jarBudgets: Record<JarKey, number>, jarSpent: Record<JarKey, number>) => {
-      const unlockedJars: JarKey[] = ["food", "transport", "daily", "emotional"];
-      const rollovers: Partial<Record<JarKey, number>> = {};
-
-      for (const jar of unlockedJars) {
-        const remaining = (jarBudgets[jar] ?? 0) - (jarSpent[jar] ?? 0);
-        if (remaining > 0) {
-          rollovers[jar] = remaining;
-        }
-      }
-
+  /**
+   * Close the month and apply rollover choices.
+   * choices: per unlocked jar — "same" (roll to next month same jar), "debt", or "savings".
+   * jarRemaining: current remaining balances passed from useBudget.
+   */
+  const closeMonthWithChoices = useCallback(
+    (
+      choices: Partial<Record<JarKey, RolloverChoice>>,
+      jarRemaining: Record<JarKey, number>
+    ) => {
       const nextMonthKey = getNextMonthKey(monthKey);
       const nextStorageKey = `pbj_${nextMonthKey}`;
 
@@ -168,15 +215,31 @@ export function useMonthData(monthKey: string) {
         nextData = { ...DEFAULT_MONTH_DATA };
       }
 
-      const mergedRollovers: Partial<Record<JarKey, number>> = { ...nextData.rollovers };
-      for (const [jar, amount] of Object.entries(rollovers) as [JarKey, number][]) {
-        mergedRollovers[jar] = (mergedRollovers[jar] ?? 0) + amount;
+      const newRollovers = { ...nextData.rollovers };
+      const newLockedContributions = { ...nextData.lockedContributions };
+
+      for (const jar of UNLOCKED_JAR_KEYS) {
+        const remaining = jarRemaining[jar] ?? 0;
+        if (remaining <= 0) continue;
+
+        const choice = choices[jar] ?? "same";
+        if (choice === "same") {
+          newRollovers[jar] = (newRollovers[jar] ?? 0) + remaining;
+        } else if (choice === "debt") {
+          newLockedContributions.debt = (newLockedContributions.debt ?? 0) + remaining;
+        } else if (choice === "savings") {
+          newLockedContributions.savings = (newLockedContributions.savings ?? 0) + remaining;
+        }
       }
 
-      nextData = { ...nextData, rollovers: mergedRollovers };
+      nextData = {
+        ...nextData,
+        rollovers: newRollovers,
+        lockedContributions: newLockedContributions,
+      };
       localStorage.setItem(nextStorageKey, JSON.stringify(nextData));
 
-      return { nextMonthKey, rollovers };
+      return { nextMonthKey };
     },
     [monthKey]
   );
@@ -185,10 +248,11 @@ export function useMonthData(monthKey: string) {
     data,
     updateIncome,
     updateFixedExpenses,
-    setDebtSavingsMode,
-    addTransaction,
+    addExpense,
+    addTransfer,
     deleteTransaction,
+    deleteTransfer,
     resetMonth,
-    closeMonthAndRollover,
+    closeMonthWithChoices,
   };
 }
