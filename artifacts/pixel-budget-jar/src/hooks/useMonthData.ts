@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 
 export type JarKey = "food" | "transport" | "daily" | "debt" | "savings" | "emotional";
 
-export type LockedJarKey = "debt" | "savings";
-export const LOCKED_JAR_KEYS: LockedJarKey[] = ["debt", "savings"];
-export const UNLOCKED_JAR_KEYS: JarKey[] = ["food", "transport", "daily", "emotional"];
+export type LockedJarKey = "debt";
+export const LOCKED_JAR_KEYS: LockedJarKey[] = ["debt"];
+export const UNLOCKED_JAR_KEYS: JarKey[] = ["food", "transport", "daily", "emotional", "savings"];
 
 export type IncomeEntry = {
   id: string;
@@ -156,18 +156,16 @@ export function useMonthData(monthKey: string) {
   /**
    * Add a manual transfer between jars.
    * Validates transfer rules:
-   * - Locked jars cannot send OUT, except Debt↔Savings.
-   * - Unlocked can send to unlocked or to locked.
+   * - Locked jars (Debt only) cannot send OUT to any jar.
+   * - Unlocked jars can send to any other jar.
    */
   const addTransfer = useCallback(
     (transfer: Omit<Transfer, "id" | "auto">) => {
-      const { fromJar, toJar } = transfer;
+      const { fromJar } = transfer;
       const fromLocked = LOCKED_JAR_KEYS.includes(fromJar as LockedJarKey);
-      const toLocked = LOCKED_JAR_KEYS.includes(toJar as LockedJarKey);
 
-      // Locked jars can only send to each other (Debt↔Savings)
-      if (fromLocked && !(fromLocked && toLocked)) {
-        throw new Error("Cannot transfer out of a locked jar except to another locked jar.");
+      if (fromLocked) {
+        throw new Error("Cannot transfer out of a locked jar.");
       }
 
       const newTransfer: Transfer = { ...transfer, id: generateId(), auto: false };

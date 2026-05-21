@@ -10,8 +10,8 @@ export const JAR_LABELS: Record<JarKey, string> = {
   emotional: "Emotional Value",
 };
 
-export const LOCKED_JARS: JarKey[] = ["debt", "savings"];
-export const UNLOCKED_JARS: JarKey[] = ["food", "transport", "daily", "emotional"];
+export const LOCKED_JARS: JarKey[] = ["debt"];
+export const UNLOCKED_JARS: JarKey[] = ["food", "transport", "daily", "emotional", "savings"];
 
 export const JAR_ORDER: JarKey[] = [
   "food",
