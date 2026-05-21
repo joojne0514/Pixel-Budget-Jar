@@ -36,7 +36,7 @@ function AppContent() {
             <HistoryView monthKey={monthKey} />
           </Route>
           <Route path="/income">
-            <IncomeFixedView monthKey={monthKey} />
+            <IncomeFixedView monthKey={monthKey} onMonthChange={setMonthKey} />
           </Route>
           <Route component={NotFound} />
         </Switch>
